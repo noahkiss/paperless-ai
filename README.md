@@ -81,6 +81,33 @@ Powered by **Retrieval-Augmented Generation (RAG)**, you can now search semantic
 
 ---
 
+## Structured JSON Output (Custom Provider)
+
+When using `AI_PROVIDER=custom`, you can enable structured JSON output mode by setting:
+
+```env
+STRUCTURED_OUTPUT=yes
+```
+
+This adds `response_format: { type: "json_object" }` to API requests, which forces the model to return valid JSON instead of prose or markdown-wrapped responses. **Disabled by default** — not all models/providers support it.
+
+### Model Compatibility
+
+| Model | Provider | Supported | Notes |
+|-------|----------|:---------:|-------|
+| gpt-4o-mini | OpenAI | Yes | Fully supported |
+| gpt-5-mini | OpenAI | Yes | Fully supported |
+| gpt-5.4-mini | OpenAI | Yes | Latest recommended mini model |
+| Gemini 2.5 Flash | Google (OpenAI compat) | Yes | Via `generativelanguage.googleapis.com/v1beta/openai/` |
+| Gemini 3 Flash Preview | Google (OpenAI compat) | Yes | Same endpoint as above |
+| Mistral models | Mistral AI | Yes | Native support |
+| Claude (Anthropic compat) | Anthropic | No | Parameter is silently ignored |
+| Ollama models | Ollama | Varies | Depends on model; use Ollama provider instead |
+
+> **Note:** Even without `STRUCTURED_OUTPUT=yes`, the prompt instructs the model to return JSON. The env var adds an API-level constraint for providers that support it. Think-tag stripping (`<think>...</think>`) and markdown fence stripping are always applied regardless of this setting.
+
+---
+
 ## 🔧 Local Development
 
 ```bash

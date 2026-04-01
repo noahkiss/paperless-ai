@@ -80,7 +80,8 @@ module.exports = {
   custom: {
     apiUrl: process.env.CUSTOM_BASE_URL || '',
     apiKey: process.env.CUSTOM_API_KEY || '',
-    model: process.env.CUSTOM_MODEL || ''
+    model: process.env.CUSTOM_MODEL || '',
+    structuredOutput: parseEnvBoolean(process.env.STRUCTURED_OUTPUT, 'no'),
   },
   azure: {
     apiKey: process.env.AZURE_API_KEY || '',

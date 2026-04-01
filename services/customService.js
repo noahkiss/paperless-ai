@@ -179,7 +179,7 @@ class CustomOpenAIService {
       // console.log('######################################################################');
 
 
-      const response = await this.client.chat.completions.create({
+      const requestParams = {
         model: model,
         messages: [
           {
@@ -192,8 +192,13 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
-        response_format: { type: "json_object" },
-      });
+      };
+
+      if (config.custom.structuredOutput === 'yes') {
+        requestParams.response_format = { type: "json_object" };
+      }
+
+      const response = await this.client.chat.completions.create(requestParams);
 
       // Handle response
       //console.log(`MESSAGE: ${response?.choices?.[0]?.message?.content}`);
@@ -309,7 +314,7 @@ class CustomOpenAIService {
       const truncatedContent = await truncateToTokenLimit(content, availableTokens);
 
       // Make API request
-      const response = await this.client.chat.completions.create({
+      const requestParams = {
         model: config.custom.model,
         messages: [
           {
@@ -322,8 +327,13 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
-        response_format: { type: "json_object" },
-      });
+      };
+
+      if (config.custom.structuredOutput === 'yes') {
+        requestParams.response_format = { type: "json_object" };
+      }
+
+      const response = await this.client.chat.completions.create(requestParams);
 
       // Handle response
       if (!response?.choices?.[0]?.message?.content) {
