@@ -9,15 +9,22 @@ const documentModel = require('./models/document');
 const setupService = require('./services/setupService');
 const setupRoutes = require('./routes/setup');
 
-// Add environment variables for RAG service if not already set
+// RAG service is not bundled in this image
 process.env.RAG_SERVICE_URL = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
-process.env.RAG_SERVICE_ENABLED = process.env.RAG_SERVICE_ENABLED || 'true';
+process.env.RAG_SERVICE_ENABLED = process.env.RAG_SERVICE_ENABLED || 'false';
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const Logger = require('./services/loggerService');
 const { max } = require('date-fns');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./swagger');
+
+// Swagger is a dev dependency — optional in production
+let swaggerUi, swaggerSpec;
+try {
+  swaggerUi = require('swagger-ui-express');
+  swaggerSpec = require('./swagger');
+} catch {
+  // not available in production builds
+}
 
 const htmlLogger = new Logger({
   logFile: 'logs.html',
@@ -67,67 +74,32 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieParser());
 
-// Swagger documentation route
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  swaggerOptions: {
-    url: '/api-docs/openapi.json'
-  }
-}));
+// Swagger documentation route (dev only)
+if (swaggerUi && swaggerSpec) {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      url: '/api-docs/openapi.json'
+    }
+  }));
 
-/**
- * @swagger
- * /api-docs/openapi.json:
- *   get:
- *     summary: Retrieve the OpenAPI specification
- *     description: |
- *       Returns the complete OpenAPI specification for the Paperless-AI API.
- *       This endpoint attempts to serve a static OpenAPI JSON file first, falling back
- *       to dynamically generating the specification if the file cannot be read.
- *       
- *       The OpenAPI specification document contains all API endpoints, parameters,
- *       request bodies, responses, and schemas for the entire application.
- *     tags: [API, System]
- *     responses:
- *       200:
- *         description: OpenAPI specification returned successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               description: The complete OpenAPI specification
- *       404:
- *         description: OpenAPI specification file not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       500:
- *         description: Server error occurred while retrieving the OpenAPI specification
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-app.get('/api-docs/openapi.json', (req, res) => {
-  const openApiPath = path.join(process.cwd(), 'OPENAPI', 'openapi.json');
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Try to serve the static file first
-  fs.readFile(openApiPath)
-    .then(data => {
-      res.send(JSON.parse(data));
-    })
-    .catch(err => {
-      console.warn('Error reading OpenAPI file, generating dynamically:', err.message);
-      // Fallback to generating the spec if file can't be read
-      res.send(swaggerSpec);
-    });
-});
+  app.get('/api-docs/openapi.json', (req, res) => {
+    const openApiPath = path.join(process.cwd(), 'OPENAPI', 'openapi.json');
+    res.setHeader('Content-Type', 'application/json');
 
-// Add a redirect for the old endpoint for backward compatibility
-app.get('/api-docs.json', (req, res) => {
-  res.redirect('/api-docs/openapi.json');
-});
+    fs.readFile(openApiPath)
+      .then(data => {
+        res.send(JSON.parse(data));
+      })
+      .catch(err => {
+        console.warn('Error reading OpenAPI file, generating dynamically:', err.message);
+        res.send(swaggerSpec);
+      });
+  });
+
+  app.get('/api-docs.json', (req, res) => {
+    res.redirect('/api-docs/openapi.json');
+  });
+}
 
 // View engine setup
 app.set('view engine', 'ejs');
@@ -629,7 +601,7 @@ async function startServer() {
   const port = process.env.PAPERLESS_AI_PORT || 3000;
   try {
     await initializeDataDirectory();
-    await saveOpenApiSpec(); // Save OpenAPI specification on startup
+    if (swaggerSpec) await saveOpenApiSpec();
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
       startScanning();

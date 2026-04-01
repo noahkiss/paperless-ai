@@ -43,12 +43,9 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
-    "nodemon": "^3.1.9",
     "openai": "^4.86.2",
     "rimraf": "^6.0.1",
     "sqlite3": "^5.1.7",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1",
     "tiktoken": "^1.0.20"
   },
   "devDependencies": {
@@ -57,7 +54,10 @@
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-jsdoc": "^50.6.3",
     "globals": "^16.0.0",
-    "prettier": "^3.5.3"
+    "nodemon": "^3.1.9",
+    "prettier": "^3.5.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

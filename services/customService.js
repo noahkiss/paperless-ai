@@ -192,6 +192,7 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
+        response_format: { type: "json_object" },
       });
 
       // Handle response
@@ -212,6 +213,7 @@ class CustomOpenAIService {
       };
 
       let jsonContent = response.choices[0].message.content;
+      jsonContent = jsonContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
       let parsedResponse;
@@ -320,6 +322,7 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
+        response_format: { type: "json_object" },
       });
 
       // Handle response
@@ -339,6 +342,7 @@ class CustomOpenAIService {
       };
 
       let jsonContent = response.choices[0].message.content;
+      jsonContent = jsonContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       jsonContent = jsonContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
       let parsedResponse;

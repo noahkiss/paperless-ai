@@ -63,7 +63,7 @@ class PaperlessService {
       try {
         console.log('[DEBUG] Refreshing tag cache...');
         this.tagCache.clear();
-        let nextUrl = '/tags/';
+        let nextUrl = '/tags/?page_size=500';
         while (nextUrl) {
           const response = await this.client.get(nextUrl);
 
@@ -427,8 +427,8 @@ class PaperlessService {
       try {
         const params = {
           page,
-          page_size: 100,  // Maximale Seitengröße für effizientes Laden
-          ordering: 'name'  // Optional: Sortierung nach Namen
+          page_size: 500,
+          ordering: 'name'
         };
 
         const response = await this.client.get('/tags/', { params });
