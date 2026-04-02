@@ -156,6 +156,10 @@ async function saveOpenApiSpec() {
 async function processDocument(doc, existingTags, existingCorrespondentList, existingDocumentTypesList, ownUserId) {
   const isProcessed = await documentModel.isDocumentProcessed(doc.id);
   if (isProcessed) return null;
+
+  const isFailed = await documentModel.isDocumentFailed(doc.id);
+  if (isFailed) return null;
+
   await documentModel.setProcessingStatus(doc.id, doc.title, 'processing');
 
   //Check if the Document can be edited
@@ -186,7 +190,9 @@ async function processDocument(doc, existingTags, existingCorrespondentList, exi
   const analysis = await aiService.analyzeDocument(content, existingTags, existingCorrespondentList, existingDocumentTypesList, doc.id);
   console.log('Repsonse from AI service:', analysis);
   if (analysis.error) {
-    throw new Error(`[ERROR] Document analysis failed: ${analysis.error}`);
+    await documentModel.recordDocumentFailure(doc.id, doc.title, analysis.error);
+    await documentModel.setProcessingStatus(doc.id, doc.title, 'complete');
+    return null;
   }
   await documentModel.setProcessingStatus(doc.id, doc.title, 'complete');
   return { analysis, originalData };

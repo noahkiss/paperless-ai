@@ -3,6 +3,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const { get } = require('http');
+const config = require('../config/config');
 
 // Ensure data directory exists
 const dataDir = path.join(process.cwd(), 'data');
@@ -118,6 +119,33 @@ const getPaginatedHistoryDocuments = db.prepare(`
   ORDER BY created_at DESC
   LIMIT ? OFFSET ?
 `);
+
+const createFailedDocuments = db.prepare(`
+  CREATE TABLE IF NOT EXISTS failed_documents (
+    id INTEGER PRIMARY KEY,
+    document_id INTEGER UNIQUE,
+    title TEXT,
+    error TEXT,
+    fail_count INTEGER DEFAULT 1,
+    first_failed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_failed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+createFailedDocuments.run();
+
+const upsertFailedDocument = db.prepare(`
+  INSERT INTO failed_documents (document_id, title, error)
+  VALUES (?, ?, ?)
+  ON CONFLICT(document_id) DO UPDATE SET
+    fail_count = failed_documents.fail_count + 1,
+    error = excluded.error,
+    last_failed_at = CURRENT_TIMESTAMP
+  WHERE document_id = excluded.document_id
+`);
+
+const getFailedDocument = db.prepare(
+  'SELECT * FROM failed_documents WHERE document_id = ?'
+);
 
 const createProcessingStatus = db.prepare(`
   CREATE TABLE IF NOT EXISTS processing_status (
@@ -480,6 +508,42 @@ module.exports = {
       console.error('[ERROR] getting document type stats:', error);
       return [];
     }
+},
+
+async recordDocumentFailure(documentId, title, error) {
+  try {
+    upsertFailedDocument.run(documentId, title, error);
+    const row = getFailedDocument.get(documentId);
+    const count = row ? row.fail_count : 1;
+    if (count >= config.maxRetryCount) {
+      console.error(`[ERROR] Document ${documentId} ("${title}") permanently failed after ${count} attempts: ${error}`);
+    } else {
+      console.warn(`[WARN] Document ${documentId} ("${title}") failed (attempt ${count}/${config.maxRetryCount}): ${error}`);
+    }
+    return count;
+  } catch (err) {
+    console.error('[ERROR] recording document failure:', err);
+    return 0;
+  }
+},
+
+async isDocumentFailed(documentId) {
+  try {
+    const row = getFailedDocument.get(documentId);
+    return row && row.fail_count >= config.maxRetryCount;
+  } catch (error) {
+    console.error('[ERROR] checking failed document:', error);
+    return false;
+  }
+},
+
+async getFailedDocuments() {
+  try {
+    return db.prepare('SELECT * FROM failed_documents WHERE fail_count >= ?').all(config.maxRetryCount);
+  } catch (error) {
+    console.error('[ERROR] getting failed documents:', error);
+    return [];
+  }
 },
 
 async setProcessingStatus(documentId, title, status) {

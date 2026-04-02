@@ -106,6 +106,31 @@ This adds `response_format: { type: "json_object" }` to API requests, which forc
 
 > **Note:** Even without `STRUCTURED_OUTPUT=yes`, the prompt instructs the model to return JSON. The env var adds an API-level constraint for providers that support it. Think-tag stripping (`<think>...</think>`) and markdown fence stripping are always applied regardless of this setting.
 
+### Retry Limit for Failed Documents
+
+Documents that fail AI analysis (bad thumbnails, unparseable responses, etc.) are retried each scan cycle. To prevent infinite retries burning API credits, failed documents are tracked and skipped after a configurable number of attempts:
+
+```env
+MAX_RETRY_COUNT=3
+```
+
+After `MAX_RETRY_COUNT` consecutive failures, the document is permanently skipped. Failures are stored in a `failed_documents` table in the SQLite database. To retry a previously failed document, delete its row from that table. Default: `3`.
+
+### Tag Injection in Prompt
+
+When `RESTRICT_TO_EXISTING_TAGS=yes` is set, the AI model has no way of knowing which tags exist — it guesses tag names, and non-matching ones are silently dropped. This often leads to under-tagged documents.
+
+To fix this, enable tag injection to append the full list of existing tags to the AI prompt:
+
+```env
+INJECT_TAGS_IN_PROMPT=yes
+RESTRICT_TO_EXISTING_TAGS=yes
+```
+
+Both settings must be enabled. When active, the complete tag list from Paperless-ngx is appended to the system prompt with instructions to only use tags from that list. The tag list is refreshed each scan cycle.
+
+> **Note:** This is a separate opt-in rather than automatic behavior on `RESTRICT_TO_EXISTING_TAGS` because large tag lists consume context window tokens, which may be a problem for smaller models with limited context.
+
 ---
 
 ## 🔧 Local Development

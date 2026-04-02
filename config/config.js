@@ -92,6 +92,8 @@ module.exports = {
   customFields: process.env.CUSTOM_FIELDS || '',
   aiProvider: process.env.AI_PROVIDER || 'openai',
   scanInterval: process.env.SCAN_INTERVAL || '*/30 * * * *',
+  maxRetryCount: parseInt(process.env.MAX_RETRY_COUNT || '3', 10),
+  injectTagsInPrompt: parseEnvBoolean(process.env.INJECT_TAGS_IN_PROMPT, 'no'),
   useExistingData: process.env.USE_EXISTING_DATA || 'no',
   // Add limit functions to config
   limitFunctions: {

@@ -141,6 +141,12 @@ class AzureOpenAIService {
         systemPrompt = customPrompt + '\n\n' + config.mustHavePrompt;
       }
 
+      // Inject full tag list when restricted to existing tags (opt-in for large-context models)
+      if (config.injectTagsInPrompt === 'yes' && config.restrictToExistingTags === 'yes') {
+        systemPrompt += `\n\n---\nYou MUST only use tags from the following list. Do not invent new tags. Pick the most relevant tags that match the document content.\n\nAvailable tags:\n${existingTags.join(', ')}`;
+        console.log(`[DEBUG] Injected ${existingTags.length} existing tags into prompt`);
+      }
+
       // Calculate tokens AFTER all prompt modifications are complete
       const totalPromptTokens = await calculateTotalPromptTokens(
         systemPrompt,

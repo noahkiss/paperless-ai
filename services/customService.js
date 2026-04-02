@@ -48,11 +48,11 @@ class CustomOpenAIService {
         const thumbnailData = await paperlessService.getThumbnailImage(id);
 
         if (!thumbnailData) {
-          console.warn('Thumbnail nicht gefunden');
+          console.warn(`[WARN] No thumbnail for document ${id}, skipping cache`);
+        } else {
+          await fs.mkdir(path.dirname(cachePath), { recursive: true });
+          await fs.writeFile(cachePath, thumbnailData);
         }
-
-        await fs.mkdir(path.dirname(cachePath), { recursive: true });
-        await fs.writeFile(cachePath, thumbnailData);
       }
 
       // Format existing tags
@@ -79,7 +79,7 @@ class CustomOpenAIService {
       // Parse CUSTOM_FIELDS from environment variable
       let customFieldsObj;
       try {
-        customFieldsObj = JSON.parse(process.env.CUSTOM_FIELDS);
+        customFieldsObj = JSON.parse(process.env.CUSTOM_FIELDS || '{"custom_fields":[]}');
       } catch (error) {
         console.error('Failed to parse CUSTOM_FIELDS:', error);
         customFieldsObj = { custom_fields: [] };
@@ -140,6 +140,14 @@ class CustomOpenAIService {
       if (customPrompt) {
         console.log('[DEBUG] Replace system prompt with custom prompt');
         systemPrompt = customPrompt + '\n\n' + config.mustHavePrompt;
+      }
+
+      // Inject full tag list into prompt when restricted to existing tags.
+      // Done as a separate opt-in (not baked into RESTRICT_TO_EXISTING_TAGS) so
+      // users with small-context models aren't penalized by a large tag list.
+      if (config.injectTagsInPrompt === 'yes' && config.restrictToExistingTags === 'yes') {
+        systemPrompt += `\n\n---\nYou MUST only use tags from the following list. Do not invent new tags. Pick the most relevant tags that match the document content.\n\nAvailable tags:\n${existingTags.join(', ')}`;
+        console.log(`[DEBUG] Injected ${existingTags.length} existing tags into prompt`);
       }
 
       // Calculate tokens AFTER all prompt modifications are complete
@@ -224,14 +232,37 @@ class CustomOpenAIService {
       let parsedResponse;
       try {
         parsedResponse = JSON.parse(jsonContent);
-        //write to file and append to the file (txt)
-        fs.appendFile('./logs/response.txt', jsonContent, (err) => {
-          if (err) throw err;
-        });
-      } catch (error) {
-        console.error('Failed to parse JSON response:', error);
-        throw new Error('Invalid JSON response from API');
+      } catch (firstError) {
+        // Gemini sometimes appends trailing text after the JSON object — extract it
+        const start = jsonContent.indexOf('{');
+        if (start !== -1) {
+          let depth = 0;
+          let end = -1;
+          for (let i = start; i < jsonContent.length; i++) {
+            if (jsonContent[i] === '{') depth++;
+            else if (jsonContent[i] === '}') depth--;
+            if (depth === 0) { end = i + 1; break; }
+          }
+          if (end !== -1) {
+            try {
+              parsedResponse = JSON.parse(jsonContent.substring(start, end));
+              console.warn('[WARN] Extracted JSON from response with trailing text');
+            } catch (secondError) {
+              console.error('Failed to parse extracted JSON:', secondError);
+              throw new Error('Invalid JSON response from API');
+            }
+          } else {
+            throw new Error('Invalid JSON response from API: no matching closing brace');
+          }
+        } else {
+          console.error('Failed to parse JSON response:', firstError);
+          throw new Error('Invalid JSON response from API');
+        }
       }
+      // Log successful response
+      fs.appendFile('./logs/response.txt', JSON.stringify(parsedResponse), (err) => {
+        if (err) console.error('[WARN] Failed to write response log:', err);
+      });
 
       // Validate response structure
       if (!parsedResponse || !Array.isArray(parsedResponse.tags) || typeof parsedResponse.correspondent !== 'string') {
