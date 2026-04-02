@@ -177,8 +177,9 @@ async function processDocument(doc, existingTags, existingCorrespondentList, exi
     paperlessService.getDocument(doc.id)
   ]);
 
-  if (!content || !content.length >= 10) {
-    console.log(`[DEBUG] Document ${doc.id} has no content, skipping analysis`);
+  if (!content || content.length < 10) {
+    await documentModel.recordDocumentFailure(doc.id, doc.title, 'No OCR content');
+    await documentModel.setProcessingStatus(doc.id, doc.title, 'complete');
     return null;
   }
 
