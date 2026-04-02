@@ -1816,7 +1816,7 @@ router.post('/api/key-regenerate', async (req, res) => {
 
     // Sende die Antwort zurück
     res.json({ success: apiKey });
-    console.log('API key regenerated:', apiKey);
+    console.log('API key regenerated:', apiKey?.slice(0, 3) + '...');
   } catch (error) {
     console.error('API key regeneration error:', error);
     res.status(500).json({ error: 'Error regenerating API key' });
