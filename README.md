@@ -131,6 +131,19 @@ Both settings must be enabled. When active, the complete tag list from Paperless
 
 > **Note:** This is a separate opt-in rather than automatic behavior on `RESTRICT_TO_EXISTING_TAGS` because large tag lists consume context window tokens, which may be a problem for smaller models with limited context.
 
+### Correspondent Matching
+
+Before it creates a correspondent, paperless-ai looks for an existing one whose name differs only in case, punctuation, diacritics, a leading "The", or a trailing legal suffix (Inc, LLC, Ltd, Corp, Co, N.A., and similar). On a match it reuses that correspondent. So `Example Bank, N.A.` reuses `Example Bank` instead of creating a duplicate. When several existing correspondents match, the one with the lowest ID wins.
+
+```env
+CORRESPONDENT_FUZZY_MATCH=yes   # default; set to "no" to require an exact (case-insensitive) name
+CORRESPONDENT_FUZZY_PREFIX=no   # default; "yes" also matches a unique leading-token prefix
+```
+
+The prefix rule makes `Example Society Northern Chapter` reuse `Example Society`. It is off by default because it also makes `Lake State Health` reuse `Lake State`. Abbreviations such as `DMV` for `Department of Motor Vehicles` are not matched. To catch those, give the model the existing names: add `%RESTRICTED_CORRESPONDENTS%` to `SYSTEM_PROMPT`.
+
+Run the unit tests with `npm run test:unit`.
+
 ---
 
 ## 🔧 Local Development

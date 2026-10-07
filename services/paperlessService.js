@@ -4,6 +4,7 @@ const config = require('../config/config');
 const fs = require('fs');
 const path = require('path');
 const { parse, isValid, parseISO, format } = require('date-fns');
+const { findMatchingCorrespondent } = require('./correspondentMatcher');
 
 class PaperlessService {
   constructor() {
@@ -12,6 +13,11 @@ class PaperlessService {
     this.customFieldCache = new Map();
     this.lastTagRefresh = 0;
     this.CACHE_LIFETIME = 3000; // 3 Sekunden
+    this.correspondentCache = null;
+    this.lastCorrespondentRefresh = 0;
+    // A scan resolves one correspondent per document, and listing 700+ names takes
+    // several paged requests, so the list is reused for a minute.
+    this.CORRESPONDENT_CACHE_LIFETIME = 60000;
   }
 
   initialize() {
@@ -987,6 +993,31 @@ class PaperlessService {
   }
 }
 
+// Reuse an existing correspondent whose name differs only in case, punctuation
+// or a legal suffix (Inc, LLC, N.A.). CORRESPONDENT_FUZZY_MATCH=no turns it off;
+// CORRESPONDENT_FUZZY_PREFIX=yes also matches a unique token prefix.
+async findFuzzyCorrespondent(correspondent) {
+  if (process.env.CORRESPONDENT_FUZZY_MATCH === 'no') return null;
+  const existing = await this.getCorrespondentCache();
+  const match = findMatchingCorrespondent(correspondent, existing, {
+    prefix: process.env.CORRESPONDENT_FUZZY_PREFIX === 'yes'
+  });
+  if (match) {
+    console.log(`[DEBUG] Fuzzy match (${match.rule}) for correspondent "${correspondent}": "${match.name}" (ID ${match.id})`);
+    return { id: match.id, name: match.name };
+  }
+  return null;
+}
+
+async getCorrespondentCache() {
+  const now = Date.now();
+  if (!this.correspondentCache || (now - this.lastCorrespondentRefresh) > this.CORRESPONDENT_CACHE_LIFETIME) {
+    this.correspondentCache = await this.listCorrespondentsNames();
+    this.lastCorrespondentRefresh = now;
+  }
+  return this.correspondentCache;
+}
+
 async searchForExistingCorrespondent(correspondent) {
   try {
       const response = await this.client.get('/correspondents/', {
@@ -999,7 +1030,7 @@ async searchForExistingCorrespondent(correspondent) {
       
       if (results.length === 0) {
           console.log(`[DEBUG] No correspondent with name "${correspondent}" found`);
-          return null;
+          return await this.findFuzzyCorrespondent(correspondent);
       }
       
       // Check for exact match in the results - thanks to @skius for the hint!
@@ -1012,9 +1043,8 @@ async searchForExistingCorrespondent(correspondent) {
           };
       }
 
-      // No exact match found, return null
       console.log(`[DEBUG] No exact match found for "${correspondent}"`);
-      return null;
+      return await this.findFuzzyCorrespondent(correspondent);
 
   } catch (error) {
       console.error('[ERROR] while searching for existing correspondent:', error.message);
@@ -1055,6 +1085,7 @@ async searchForExistingCorrespondent(correspondent) {
                 name: name 
             });
             console.log(`[DEBUG] Created new correspondent "${name}" with ID ${createResponse.data.id}`);
+            this.correspondentCache = null;
             return createResponse.data;
         } catch (createError) {
             if (createError.response?.status === 400 && 

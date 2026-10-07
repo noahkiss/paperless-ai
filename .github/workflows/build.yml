@@ -2,7 +2,9 @@ name: Build and push to GHCR
 
 on:
   push:
-    branches: [nkmk]
+    # feat/** branches build a test image tagged with the branch name
+    # (feat/x -> :feat-x), so they never replace the deployed :nkmk.
+    branches: [nkmk, 'feat/**']
 
 jobs:
   build:
