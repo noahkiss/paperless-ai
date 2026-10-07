@@ -1707,7 +1707,11 @@ async function buildUpdateData(analysis, doc) {
   // Only process correspondent if correspondent detection is activated
   if (config.limitFunctions?.activateCorrespondents !== 'no' && analysis.document.correspondent) {
     try {
-      const correspondent = await paperlessService.getOrCreateCorrespondent(analysis.document.correspondent, options);
+      const correspondent = await paperlessService.getOrCreateCorrespondent(analysis.document.correspondent, {
+        ...options,
+        documentId: doc.id,
+        documentTitle: analysis.document.title
+      });
       if (correspondent) {
         updateData.correspondent = correspondent.id;
       }

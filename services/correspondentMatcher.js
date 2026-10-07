@@ -110,4 +110,41 @@ function findMatchingCorrespondent(suggested, existing, options = {}) {
   return null;
 }
 
-module.exports = { normalizeName, findMatchingCorrespondent };
+function trigrams(key) {
+  const padded = `  ${key} `;
+  const grams = new Set();
+  for (let i = 0; i < padded.length - 2; i++) grams.add(padded.slice(i, i + 3));
+  return grams;
+}
+
+// Similarity of two names in 0..1: the mean of token Jaccard and character
+// trigram Dice over the normalized names. Tokens catch reordering and dropped
+// words ("Society" vs "Example Society"); trigrams catch spelling.
+function nameSimilarity(a, b) {
+  const ka = normalizeName(a);
+  const kb = normalizeName(b);
+  if (!ka || !kb) return 0;
+  const ta = new Set(ka.split(' '));
+  const tb = new Set(kb.split(' '));
+  const sharedTokens = [...ta].filter(t => tb.has(t)).length;
+  const jaccard = sharedTokens / (ta.size + tb.size - sharedTokens);
+  const ga = trigrams(ka);
+  const gb = trigrams(kb);
+  const sharedGrams = [...ga].filter(g => gb.has(g)).length;
+  const dice = (2 * sharedGrams) / (ga.size + gb.size);
+  return (jaccard + dice) / 2;
+}
+
+/**
+ * The existing correspondents most similar to a suggested name, best first.
+ * @returns {{id:number,name:string,score:number}[]}
+ */
+function rankCandidates(suggested, existing, limit = 10) {
+  return existing
+    .map(c => ({ id: c.id, name: c.name, score: nameSimilarity(suggested, c.name) }))
+    .filter(c => c.score > 0)
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .slice(0, limit);
+}
+
+module.exports = { normalizeName, findMatchingCorrespondent, nameSimilarity, rankCandidates };

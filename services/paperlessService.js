@@ -4,7 +4,8 @@ const config = require('../config/config');
 const fs = require('fs');
 const path = require('path');
 const { parse, isValid, parseISO, format } = require('date-fns');
-const { findMatchingCorrespondent } = require('./correspondentMatcher');
+const { findMatchingCorrespondent, rankCandidates } = require('./correspondentMatcher');
+const { createCorrespondentDecider } = require('./correspondentDecider');
 
 class PaperlessService {
   constructor() {
@@ -1009,6 +1010,42 @@ async findFuzzyCorrespondent(correspondent) {
   return null;
 }
 
+// Ask a decisions model whether the suggested name is one of the closest
+// existing correspondents. Off unless CORRESPONDENT_DECISIONS=yes, and only for
+// the custom provider, whose base URL and key it reuses. Any failure means "no
+// match", so the caller creates the correspondent as it would without this tier.
+async decideCorrespondent(name, options = {}) {
+  if (process.env.CORRESPONDENT_DECISIONS !== 'yes') return null;
+  try {
+    const decider = createCorrespondentDecider({
+      baseUrl: config.custom.apiUrl,
+      apiKey: config.custom.apiKey,
+      model: process.env.CORRESPONDENT_DECISIONS_MODEL || 'openai/gpt-6-luna-decisions',
+      minProbability: Number(process.env.CORRESPONDENT_DECISIONS_MIN || 0.8),
+    });
+    if (!decider.enabled) {
+      console.log('[DEBUG] Correspondent decisions tier: no custom base URL or key, skipping');
+      return null;
+    }
+    const candidates = rankCandidates(name, await this.getCorrespondentCache(), 10);
+    if (candidates.length === 0) return null;
+    let excerpt = '';
+    if (options.documentId) {
+      excerpt = String(await this.getDocumentContent(options.documentId) || '').slice(0, 1500);
+    }
+    const picked = await decider.pick({ proposed: name, title: options.documentTitle, excerpt, candidates });
+    if (picked) {
+      console.log(`[DEBUG] Decisions tier: "${name}" is existing correspondent "${picked.name}" (ID ${picked.id}, p=${picked.probability})`);
+      return { id: picked.id, name: picked.name };
+    }
+    console.log(`[DEBUG] Decisions tier: "${name}" matches none of ${candidates.length} candidates`);
+    return null;
+  } catch (error) {
+    console.error(`[ERROR] Correspondent decisions tier failed for "${name}":`, error.message);
+    return null;
+  }
+}
+
 async getCorrespondentCache() {
   const now = Date.now();
   if (!this.correspondentCache || (now - this.lastCorrespondentRefresh) > this.CORRESPONDENT_CACHE_LIFETIME) {
@@ -1065,8 +1102,11 @@ async searchForExistingCorrespondent(correspondent) {
   
     try {
         // Search for the correspondent
-        const existingCorrespondent = await this.searchForExistingCorrespondent(name);
+        let existingCorrespondent = await this.searchForExistingCorrespondent(name);
         console.log("[DEBUG] Response Correspondent Search: ", existingCorrespondent);
+        if (!existingCorrespondent) {
+            existingCorrespondent = await this.decideCorrespondent(name, options);
+        }
     
         if (existingCorrespondent) {
             console.log(`[DEBUG] Found existing correspondent "${name}" with ID ${existingCorrespondent.id}`);

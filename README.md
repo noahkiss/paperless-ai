@@ -142,6 +142,16 @@ CORRESPONDENT_FUZZY_PREFIX=no   # default; "yes" also matches a unique leading-t
 
 The prefix rule makes `Example Society Northern Chapter` reuse `Example Society`. It is off by default because it also makes `Lake State Health` reuse `Lake State`. Abbreviations such as `DMV` for `Department of Motor Vehicles` are not matched. To catch those, give the model the existing names: add `%RESTRICTED_CORRESPONDENTS%` to `SYSTEM_PROMPT`.
 
+A third, optional tier asks a decisions model. It runs only when the exact and normalized matches both fail. paperless-ai ranks the 10 existing correspondents closest to the suggested name. It sends them, the document title and the first 1,500 characters of the document to OpenRouter's decisions endpoint as one `choice` question, with a "none" option. A pick at or above the threshold reuses that correspondent. "none", a low score or any error creates the new correspondent as before. The tier works only with `AI_PROVIDER=custom`. It derives the endpoint from `CUSTOM_BASE_URL` (a trailing `/v1` becomes `/alpha/decisions`) and reuses `CUSTOM_API_KEY`.
+
+```env
+CORRESPONDENT_DECISIONS=no                                  # default; "yes" turns the tier on
+CORRESPONDENT_DECISIONS_MODEL=openai/gpt-6-luna-decisions   # default
+CORRESPONDENT_DECISIONS_MIN=0.8                             # default; minimum probability to reuse
+```
+
+It catches a dropped or added word (`Society` vs `Example Society`) and a shortened name (`Example Univ`). It cannot catch an abbreviation whose letters share nothing with the full name, because the candidate ranking is lexical.
+
 Run the unit tests with `npm run test:unit`.
 
 ---
