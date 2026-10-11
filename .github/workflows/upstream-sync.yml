@@ -1,0 +1,101 @@
+name: Upstream sync
+
+# Nightly, two branches:
+#
+#   main  mirrors upstream main. It is fast-forwarded, never rewritten. If it
+#         carries commits of its own, the run opens an issue and leaves it.
+#   nkmk  carries our patch series. It is rebased onto upstream main, built as
+#         ghcr.io/noahkiss/paperless-ai:sync-nkmk, and force-pushed (with a
+#         lease, old tip kept on backup/nkmk-pre-sync-*) only when that build
+#         is green. A conflict or a red build opens an issue instead.
+#
+# The sync never touches the :nkmk image, which deploys to production. Pushes
+# made with GITHUB_TOKEN start no workflow runs, so the promote does not fire
+# build.yml either. Publish :nkmk by hand: dispatch this workflow on nkmk with
+# publish_image set. It builds the current nkmk tip.
+
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Build the current nkmk tip as :nkmk (production). Skips the sync.
+        type: boolean
+        default: false
+      candidate_ref:
+        description: Branch or SHA to adopt as the nkmk candidate instead of rebasing.
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: paperless-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: ${{ !inputs.publish_image }}
+    permissions:
+      contents: write
+      issues: write
+    uses: noahkiss/workflows/.github/workflows/upstream-sync.yml@main
+    with:
+      mode: sync
+      strategy: fast-forward
+      promote: true
+      target_branch: main
+      upstream_url: https://github.com/clusterzx/paperless-ai.git
+      upstream_branch: main
+
+  sync:
+    if: ${{ !inputs.publish_image }}
+    permissions:
+      contents: write
+      issues: write
+    uses: noahkiss/workflows/.github/workflows/upstream-sync.yml@main
+    with:
+      mode: sync
+      target_branch: nkmk
+      upstream_url: https://github.com/clusterzx/paperless-ai.git
+      upstream_branch: main
+      candidate_ref: ${{ inputs.candidate_ref }}
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: noahkiss/workflows/.github/workflows/ghcr-build-push.yml@main
+    with:
+      checkout_ref: ${{ needs.sync.outputs.candidate_sha }}
+      platforms: linux/amd64,linux/arm64
+      tags: type=raw,value=sync-nkmk
+      labels: org.opencontainers.image.revision=${{ needs.sync.outputs.candidate_sha }}
+
+  finish:
+    needs: [sync, build]
+    if: ${{ !cancelled() && needs.sync.outputs.changed == 'true' }}
+    permissions:
+      contents: write
+      issues: write
+    uses: noahkiss/workflows/.github/workflows/upstream-sync.yml@main
+    with:
+      mode: finish
+      target_branch: nkmk
+      candidate_sha: ${{ needs.sync.outputs.candidate_sha }}
+      target_sha: ${{ needs.sync.outputs.target_sha }}
+      build_result: ${{ needs.build.result }}
+      range_diff: ${{ needs.sync.outputs.range_diff }}
+
+  publish-image:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_image && github.ref == 'refs/heads/nkmk'
+    permissions:
+      contents: read
+      packages: write
+    uses: noahkiss/workflows/.github/workflows/ghcr-build-push.yml@main
+    with:
+      platforms: linux/amd64,linux/arm64
+      tags: type=raw,value=nkmk
