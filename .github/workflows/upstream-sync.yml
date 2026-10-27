@@ -13,6 +13,9 @@ name: Upstream sync
 # made with GITHUB_TOKEN start no workflow runs, so the promote does not fire
 # build.yml either. Publish :nkmk by hand: dispatch this workflow on nkmk with
 # publish_image set. It builds the current nkmk tip.
+#
+# Both builds use the shared default platform, linux/amd64: the image runs on
+# one amd64 host only, so an arm64 leg under QEMU is wasted build time.
 
 on:
   schedule:
@@ -71,7 +74,6 @@ jobs:
     uses: noahkiss/workflows/.github/workflows/ghcr-build-push.yml@main
     with:
       checkout_ref: ${{ needs.sync.outputs.candidate_sha }}
-      platforms: linux/amd64,linux/arm64
       tags: type=raw,value=sync-nkmk
       labels: org.opencontainers.image.revision=${{ needs.sync.outputs.candidate_sha }}
 
@@ -97,5 +99,4 @@ jobs:
       packages: write
     uses: noahkiss/workflows/.github/workflows/ghcr-build-push.yml@main
     with:
-      platforms: linux/amd64,linux/arm64
       tags: type=raw,value=nkmk
