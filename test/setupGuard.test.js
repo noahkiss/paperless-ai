@@ -1,7 +1,10 @@
 // Run with: npm run test:unit
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isSetupPath, setupAccess, lockedSetupResponse } = require('../services/setupGuard');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { isSetupPath, setupAccess, hasSavedConfig } = require('../services/setupGuard');
 
 test('matches every path the old PUBLIC_ROUTES prefix rule made public', () => {
   for (const p of ['/setup', '/setup/', '/setup/anything', '/setupx']) {
@@ -28,10 +31,18 @@ test('other paths keep the normal rules', () => {
   assert.equal(setupAccess({ path: '/login', method: 'POST' }, false), 'not-setup');
 });
 
-test('locked setup: page loads redirect to login, everything else gets 401', () => {
-  assert.equal(lockedSetupResponse('GET'), 'redirect');
-  assert.equal(lockedSetupResponse('HEAD'), 'redirect');
-  assert.equal(lockedSetupResponse('POST'), 'unauthorized');
-  assert.equal(lockedSetupResponse('PUT'), 'unauthorized');
-  assert.equal(lockedSetupResponse('DELETE'), 'unauthorized');
+test('saved config with a Paperless URL locks setup; a missing file does not', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setupguard-'));
+  const env = path.join(dir, '.env');
+  try {
+    assert.equal(hasSavedConfig(env), false);
+    fs.writeFileSync(env, 'AI_PROVIDER=custom\n');
+    assert.equal(hasSavedConfig(env), false);
+    fs.writeFileSync(env, 'AI_PROVIDER=custom\nPAPERLESS_API_URL=http://paperless:8000/api\n');
+    assert.equal(hasSavedConfig(env), true);
+    // A path that cannot be read as a file counts as configured (fail closed)
+    assert.equal(hasSavedConfig(dir), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

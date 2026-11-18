@@ -18,8 +18,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
-const { authenticateJWT, isAuthenticated } = require('./auth.js');
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const { authenticateJWT, isAuthenticated, JWT_SECRET } = require('./auth.js');
 const customService = require('../services/customService.js');
 const config = require('../config/config.js');
 require('dotenv').config({ path: '../data/.env' });
@@ -148,19 +147,21 @@ router.use(async (req, res, next) => {
   const token = req.cookies.jwt || req.headers.authorization?.split(' ')[1];
   const apiKey = req.headers['x-api-key'];
 
-  // The setup wizard is public only until a user exists
+  // The setup wizard is public only until a user or saved config exists
   let access = 'not-setup';
   if (setupGuard.isSetupPath(req.path)) {
-    let hasUsers = true; // fail closed if the user table cannot be read
+    let locked = true; // fail closed if the user table cannot be read
     try {
-      hasUsers = documentModel.hasUsers();
+      locked = documentModel.hasUsers() || setupGuard.hasSavedConfig(setupService.envPath);
     } catch (error) {
-      console.error('[ERROR] checking users for setup access:', error.message);
+      console.error('[ERROR] checking setup access:', error.message);
     }
-    access = setupGuard.setupAccess(req, hasUsers);
+    access = setupGuard.setupAccess(req, locked);
   }
+  // A locked setup path answers 401, not a redirect: with saved config but
+  // no user, /login redirects to /setup and a redirect back would loop.
   const rejectUnauthenticated = () => {
-    if (access === 'auth' && setupGuard.lockedSetupResponse(req.method) === 'unauthorized') {
+    if (access === 'auth') {
       return res.status(401).json({ error: 'Authentication required' });
     }
     return res.redirect('/login');

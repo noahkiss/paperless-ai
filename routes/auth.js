@@ -1,8 +1,11 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
-// JWT secret key - should be moved to environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+// Without JWT_SECRET, use a random per-process secret, never a fixed default:
+// a published default lets anyone sign a valid token. Sessions then end on
+// restart. Setup writes a persistent JWT_SECRET to data/.env.
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 // JWT middleware to verify token
 const authenticateJWT = (req, res, next) => {
@@ -50,4 +53,4 @@ const isAuthenticated = (req, res, next) => {
   }
 };
 
-module.exports = { authenticateJWT, isAuthenticated };
+module.exports = { authenticateJWT, isAuthenticated, JWT_SECRET };

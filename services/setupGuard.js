@@ -1,13 +1,16 @@
 // Decides how the auth middleware treats a request to the setup wizard.
 //
-// The wizard is public only while the instance has no user. Once a user
-// exists, every /setup request needs the normal authentication: otherwise an
-// anonymous POST /setup could replace the config and delete all users
-// (GHSA-qgr5-7f3c-qqm3).
+// The wizard is public only on a fresh instance: no user and no saved
+// config. Once either exists, every /setup request needs the normal
+// authentication: otherwise an anonymous POST /setup could replace the
+// config and delete all users (GHSA-qgr5-7f3c-qqm3). Saved config alone
+// locks it too, because an instance configured by editing data/.env has
+// no user, and GET /setup renders the saved secrets.
 //
-// The lock keys on users, not on setupService.isConfigured(): that check
-// validates against Paperless-ngx, so an unreachable Paperless would reopen
-// the wizard.
+// The lock does not use setupService.isConfigured(): that check validates
+// against Paperless-ngx, so an unreachable Paperless would reopen the wizard.
+
+const fs = require('fs');
 
 // Same prefix match PUBLIC_ROUTES uses, so every path the old rule made
 // public is covered. Other spellings (e.g. /SETUP) never matched
@@ -18,21 +21,28 @@ function isSetupPath(path) {
 
 /**
  * @param {object} req       - { path, method }
- * @param {boolean} hasUsers - at least one user exists
+ * @param {boolean} locked   - a user or saved config exists
  * @returns {'not-setup'|'public'|'auth'}
  *   not-setup: not a setup path, use the normal rules
  *   public:    first-run setup, allow without authentication
  *   auth:      setup is locked, require authentication
  */
-function setupAccess(req, hasUsers) {
+function setupAccess(req, locked) {
   if (!isSetupPath(req.path)) return 'not-setup';
-  return hasUsers ? 'auth' : 'public';
+  return locked ? 'auth' : 'public';
 }
 
-// How to answer an unauthenticated request to a locked setup path.
-// Browsers navigating to the page get the login page; anything else gets 401.
-function lockedSetupResponse(method) {
-  return method === 'GET' || method === 'HEAD' ? 'redirect' : 'unauthorized';
+// True when the config file holds a Paperless URL, the same first test
+// setupService.isConfigured() applies. A missing file means not configured;
+// any other read error counts as configured, so the wizard stays locked.
+function hasSavedConfig(envPath) {
+  let content;
+  try {
+    content = fs.readFileSync(envPath, 'utf8');
+  } catch (error) {
+    return error.code !== 'ENOENT';
+  }
+  return /^\s*PAPERLESS_API_URL\s*=\s*\S/m.test(content);
 }
 
-module.exports = { isSetupPath, setupAccess, lockedSetupResponse };
+module.exports = { isSetupPath, setupAccess, hasSavedConfig };
