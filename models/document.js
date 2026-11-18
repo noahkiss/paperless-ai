@@ -446,6 +446,11 @@ module.exports = {
     }
   },
 
+  // Throws on a database error, unlike getUsers(), so callers can fail closed.
+  hasUsers() {
+    return db.prepare('SELECT 1 FROM users LIMIT 1').get() !== undefined;
+  },
+
   async getUsers() {
     try {
       return db.prepare('SELECT * FROM users').all();

@@ -6,6 +6,7 @@ const openaiService = require('../services/openaiService.js');
 const ollamaService = require('../services/ollamaService.js');
 const azureService = require('../services/azureService.js');
 const documentModel = require('../models/document.js');
+const setupGuard = require('../services/setupGuard.js');
 const AIServiceFactory = require('../services/aiServiceFactory');
 const debugService = require('../services/debugService.js');
 const configFile = require('../config/config.js');
@@ -147,8 +148,26 @@ router.use(async (req, res, next) => {
   const token = req.cookies.jwt || req.headers.authorization?.split(' ')[1];
   const apiKey = req.headers['x-api-key'];
 
+  // The setup wizard is public only until a user exists
+  let access = 'not-setup';
+  if (setupGuard.isSetupPath(req.path)) {
+    let hasUsers = true; // fail closed if the user table cannot be read
+    try {
+      hasUsers = documentModel.hasUsers();
+    } catch (error) {
+      console.error('[ERROR] checking users for setup access:', error.message);
+    }
+    access = setupGuard.setupAccess(req, hasUsers);
+  }
+  const rejectUnauthenticated = () => {
+    if (access === 'auth' && setupGuard.lockedSetupResponse(req.method) === 'unauthorized') {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    return res.redirect('/login');
+  };
+
   // Public route check
-  if (PUBLIC_ROUTES.some(route => req.path.startsWith(route))) {
+  if (access !== 'auth' && PUBLIC_ROUTES.some(route => req.path.startsWith(route))) {
     return next();
   }
 
@@ -158,7 +177,7 @@ router.use(async (req, res, next) => {
   } else {
     // Fallback to JWT authentication
     if (!token) {
-      return res.redirect('/login');
+      return rejectUnauthenticated();
     }
 
     try {
@@ -166,7 +185,7 @@ router.use(async (req, res, next) => {
       req.user = decoded;
     } catch (error) {
       res.clearCookie('jwt');
-      return res.redirect('/login');
+      return rejectUnauthenticated();
     }
   }
 
